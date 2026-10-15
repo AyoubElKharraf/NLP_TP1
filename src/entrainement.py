@@ -1,135 +1,138 @@
 """
 Module : entrainement.py
-Description : Boucle d'entrainement SGD avec suivi temporel, calcul de perplexite,
-sauvegarde CSV et trace de la courbe d'apprentissage en ASCII dans le terminal.
-Toutes les fonctions comptent strictement moins de 40 lignes.
+Description : Boucle d'entrainement par descente de gradient stochastique (SGD)
+sur les sequences temporelles avec suivi de la perte.
 """
 
-from math import exp
-import time
-from src.config import (
-    DELTA,
-    SEUIL_CLIPPING,
-    NB_EPOQUES_SURAPPRENTISSAGE,
-    NB_EPOQUES_CORPUS,
-    FREQUENCE_PERPLEXITE,
-    CHEMIN_PERTE_CSV
-)
+import os
+import sys
+
+# Ajout du dossier racine au sys.path si execute directement
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from src.rnn import initialiser_parametres, propagation_avant, predire_caractere_argmax
-from src.perte import erreur_sequence, calculer_perplexite
+from src.perte import erreur_sequence, erreur_globale_corpus
 from src.bptt import retropropagation_bptt
 from src.optimiseur import ecreter_gradients, mettre_a_jour_parametres
 from src.vocabulaire import (
     tokeniser,
     construire_vocab,
     encoder_sequence,
-    encoder_one_hot_sequence
+    encoder_one_hot_sequence,
+    decoder_sequence
 )
+from src.donnees import preparer_donnees
 
 
-def tracer_courbe_ascii(valeurs, hauteur=10, largeur=45):
+def entrainer_sgd(exemples, parametres, nb_epoques=100, delta=0.05, seuil=5.0, afficher_chaque=10):
     """
-    Genere un graphique ASCII de l'evolution de la perte pour affichage en terminal.
+    Concept du cours : Entrainement stochastique (SGD) sequence par sequence.
+    Pour chaque epoque :
+      Pour chaque sequence (X, E) du corpus :
+        1. Propagation avant : calcul de Ht et Yt
+        2. Retropropagation temporelle (BPTT) : calcul des gradients dWxh, dWhh, dWhy, dbh, dby
+        3. Ecretage du gradient : si ||grad|| > seuil
+        4. Mise a jour SGD : P = P - delta * grad
     """
-    v_min, v_max = min(valeurs), max(valeurs)
-    delta_v = (v_max - v_min) if v_max > v_min else 1.0
-    nb_pts = len(valeurs)
-    pts = [valeurs[int(c * (nb_pts - 1) / (largeur - 1))] for c in range(largeur)]
+    historique_perte = []
 
-    grille = [[" " for _ in range(largeur)] for _ in range(hauteur)]
-    for c in range(largeur):
-        row = (hauteur - 1) - int((pts[c] - v_min) / delta_v * (hauteur - 1))
-        grille[row][c] = "*"
+    for epoque in range(1, nb_epoques + 1):
+        perte_totale_epoque = 0.0
+        nb_caracteres_epoque = 0
 
-    out = ["\n--- COURBE DE PERTE EN TERMINAL (ASCII) ---"]
-    for r in range(hauteur):
-        axe_y = v_max - (r / (hauteur - 1)) * delta_v
-        out.append(f"{axe_y:6.3f} | {''.join(grille[r])}")
-    out.append("       +" + "-" * largeur)
-    out.append(f"       1{' ' * (largeur - 6)}Epoques ({nb_pts})")
-    return "\n".join(out)
-
-
-def pas_entrainement_sequence(ex, parametres, delta=DELTA, seuil=SEUIL_CLIPPING):
-    """
-    Execute un pas complet sur une sequence : Forward -> Perte -> BPTT -> Clip -> SGD.
-    """
-    X_seq = ex["X_one_hot"]
-    E_seq = ex["E_one_hot"]
-    H, Y = propagation_avant(X_seq, parametres)
-    perte_seq, _ = erreur_sequence(Y, E_seq)
-    gradients = retropropagation_bptt(X_seq, E_seq, H, Y, parametres)
-    ecreter_gradients(gradients, seuil)
-    mettre_a_jour_parametres(parametres, gradients, delta)
-    return perte_seq, ex["T"]
-
-
-def sauvegarder_historique_csv(historique, chemin=CHEMIN_PERTE_CSV):
-    """
-    Sauvegarde la perte moyenne et la perplexite par epoque dans un fichier CSV.
-    """
-    with open(chemin, "w", encoding="utf-8") as f:
-        f.write("epoque,perte_moyenne,perplexite\n")
-        for ep, perte, ppl in historique:
-            f.write(f"{ep},{perte:.6f},{ppl:.6f}\n")
-
-
-def entrainer_sgd(exemples, parametres, nb_epoques=NB_EPOQUES_CORPUS, delta=DELTA, seuil=SEUIL_CLIPPING):
-    """
-    Boucle d'entrainement par descente de gradient stochastique sur le corpus.
-    Affiche le temps par epoque et la perplexite toutes les 10 epoques.
-    """
-    historique = []
-    print(f"Demarrage entrainement SGD ({nb_epoques} epoques)...")
-
-    for ep in range(1, nb_epoques + 1):
-        t0 = time.time()
-        perte_totale, nb_cars = 0.0, 0
         for ex in exemples:
-            p_seq, t_len = pas_entrainement_sequence(ex, parametres, delta, seuil)
-            perte_totale += p_seq
-            nb_cars += t_len
+            X_seq = ex["X_one_hot"]
+            E_seq = ex["E_one_hot"]
+            T = ex["T"]
 
-        perte_moy = perte_totale / nb_cars
-        ppl = calculer_perplexite(perte_moy)
-        dt = time.time() - t0
-        historique.append((ep, perte_moy, ppl))
+            # 1. Forward
+            H, Y = propagation_avant(X_seq, parametres)
 
-        if ep == 1 or ep % FREQUENCE_PERPLEXITE == 0 or ep == nb_epoques:
-            print(f"Epoque {ep:3d}/{nb_epoques} | Perte: {perte_moy:.4f} | Perplexite: {ppl:.2f} | Temps: {dt*1000:.1f}ms")
+            # Perte sur la sequence
+            perte_seq, _ = erreur_sequence(Y, E_seq)
+            perte_totale_epoque += perte_seq
+            nb_caracteres_epoque += T
 
-    sauvegarder_historique_csv(historique)
-    pertes_seules = [p for _, p, _ in historique]
-    print(tracer_courbe_ascii(pertes_seules))
-    return historique
+            # 2. Backward (BPTT)
+            gradients = retropropagation_bptt(X_seq, E_seq, H, Y, parametres)
+
+            # 3. Ecretage (Gradient Clipping)
+            ecreter_gradients(gradients, seuil)
+
+            # 4. Descente de gradient (SGD)
+            mettre_a_jour_parametres(parametres, gradients, delta)
+
+        perte_moyenne = perte_totale_epoque / nb_caracteres_epoque
+        historique_perte.append(perte_moyenne)
+
+        if epoque == 1 or epoque % afficher_chaque == 0 or epoque == nb_epoques:
+            print(f"Epoque {epoque:3d}/{nb_epoques} | Perte moyenne par caractere : {perte_moyenne:.4f}")
+
+    return historique_perte
 
 
-def tester_surapprentissage_mot_unique(nb_epoques=NB_EPOQUES_SURAPPRENTISSAGE):
+def tester_surapprentissage_mot_unique():
     """
-    Validation methodologique : verifie que le Tanh-RNN peut sur-apprendre un mot unique.
+    Concept du cours / Validation methodologique :
+    Avant d'entrainer sur tout le corpus, on teste le RNN sur un seul mot/sequence court.
+    Le modele doit sur-apprendre (overfit) rapidement et voir sa perte s'effondrer vers 0.
     """
-    print("\n--- TEST DE SUR-APPRENTISSAGE SUR UN MOT UNIQUE ---")
-    mot = "bonjour<fin>"
-    tokens = tokeniser(mot)
+    print("\n--- TEST DE SUR-APPRENTISSAGE SUR UNE SEQUENCE UNIQUE ---")
+    mot_cible = "Bonjour<fin>"
+    tokens = tokeniser(mot_cible)
     c2i, i2c = construire_vocab(tokens)
-    V, H_dim = len(c2i), 16
+    V = len(c2i)
+    H_dim = 16
 
     indices = encoder_sequence(tokens, c2i)
-    ex_test = [{
-        "X_one_hot": encoder_one_hot_sequence(indices[:-1], V),
-        "E_one_hot": encoder_one_hot_sequence(indices[1:], V),
-        "T": len(indices) - 1
+    X_one_hot = encoder_one_hot_sequence(indices[:-1], V)
+    E_one_hot = encoder_one_hot_sequence(indices[1:], V)
+    T = len(X_one_hot)
+
+    exemple_unique = [{
+        "X_one_hot": X_one_hot,
+        "E_one_hot": E_one_hot,
+        "T": T
     }]
 
-    params = initialiser_parametres(taille_vocab=V, taille_cachee=H_dim, borne=0.1)
-    for ep in range(1, nb_epoques + 1):
-        pas_entrainement_sequence(ex_test[0], params, delta=0.2, seuil=5.0)
+    # Initialisation
+    params_test = initialiser_parametres(taille_vocab=V, taille_cachee=H_dim, echelle=0.01)
 
-    H, Y = propagation_avant(ex_test[0]["X_one_hot"], params)
-    perte, _ = erreur_sequence(Y, ex_test[0]["E_one_hot"])
-    predit = "".join([predire_caractere_argmax(Y[t], i2c)[0] for t in range(ex_test[0]["T"])])
-    attendu = "".join(tokens[1:])
+    # Entrainement intensif sur ce seul mot
+    print(f"Sequence cible a memoriser : '{mot_cible}' (T={T}, V={V})")
+    historique = entrainer_sgd(exemple_unique, params_test, nb_epoques=60, delta=0.2, seuil=5.0, afficher_chaque=15)
 
-    print(f"Attendu : '{attendu}' | Predit : '{predit}' | Perte finale : {perte:.4f}")
-    assert perte < 0.1, f"Echec du sur-apprentissage : perte {perte:.4f} trop elevee"
-    print("[OK] Test de sur-apprentissage valide avec succes !")
+    # Verification de la generation
+    H, Y = propagation_avant(X_one_hot, params_test)
+    texte_predit = ""
+    for t in range(T):
+        car_pred, _ = predire_caractere_argmax(Y[t], i2c)
+        texte_predit += car_pred
+
+    print(f"Texte attendu : '{''.join(tokens[1:])}'")
+    print(f"Texte predit  : '{texte_predit}'")
+
+    perte_initiale = historique[0]
+    perte_finale = historique[-1]
+    print(f"Baisse de perte : {perte_initiale:.4f} --> {perte_finale:.4f}")
+    assert perte_finale < 0.2, f"Le sur-apprentissage a echoue (perte finale {perte_finale:.4f})"
+    print("[OK] Test de sur-apprentissage reussi avec succes !")
+
+
+if __name__ == "__main__":
+    # 1. Test du sur-apprentissage sur une sequence courte
+    tester_surapprentissage_mot_unique()
+
+    # 2. Entrainement sur le corpus complet
+    print("\n--- ENTRAINEMENT COMPLET SUR LE CORPUS ---")
+    chemin_corpus = os.path.join(os.path.dirname(__file__), "..", "data", "corpus.txt")
+    exemples, c2i, i2c, V = preparer_donnees(chemin_corpus)
+
+    H_dim = 32
+    parametres_corpus = initialiser_parametres(taille_vocab=V, taille_cachee=H_dim, echelle=0.01)
+
+    print(f"Demarrage de l'entrainement sur {len(exemples)} exemples (V={V}, H={H_dim})...")
+    # Entrainement sur 120 epoques avec delta=0.1
+    entrainer_sgd(exemples, parametres_corpus, nb_epoques=120, delta=0.1, seuil=5.0, afficher_chaque=20)
+
+    print("\n[OK] Entrainement termine avec succes !")

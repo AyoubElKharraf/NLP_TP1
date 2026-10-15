@@ -1,40 +1,12 @@
-Q: comment tu t'appelles ?
-R: je suis un petit rnn.<fin>
-Q: qui es-tu ?
-R: je suis un modele recurrent.<fin>
-Q: que fais-tu ?
-R: j'apprends a repondre.<fin>
-Q: bonjour !
-R: salut a toi.<fin>
-Q: comment ca va ?
-R: tout va bien, merci.<fin>
-Q: quel est ton cours ?
-R: c'est le cours de taln.<fin>
-Q: qui est le professeur ?
-R: c'est le professeur mazroui.<fin>
-Q: quel est ton role ?
-R: predire le caractere suivant.<fin>
-Q: comment apprends-tu ?
-R: avec la retropropagation.<fin>
-Q: quelle est ton activation ?
-R: la tangente hyperbolique.<fin>
-Q: quelle est ta sortie ?
-R: une fonction softmax.<fin>
-Q: que vaut ton erreur ?
-R: l'entropie croisee.<fin>
-Q: comment tu optimises ?
-R: par descente de gradient.<fin>
-Q: as-tu une memoire ?
-R: oui, mon etat cache.<fin>
-Q: ou sont tes poids ?
-R: dans wxh, whh et why.<fin>
-Q: quel est ton niveau ?
-R: je travaille au niveau caractere.<fin>
-Q: es-tu intelligent ?
-R: non, je calcule des probabilites.<fin>
-Q: aimes-tu le taln ?
-R: oui, c'est passionnant.<fin>
-Q: quel est ce tp ?
-R: le tp de master m2i.<fin>
-Q: au revoir !
-R: a bientot.<fin>
+Q: Bonjour
+R: Salut!
+<fin>
+Q: Comment vas-tu?
+R: Bien, merci.
+<fin>
+Q: Qui es-tu?
+R: Je suis un RNN.
+<fin>
+Q: Que fais-tu?
+R: J'apprends a repondre.
+<fin>
