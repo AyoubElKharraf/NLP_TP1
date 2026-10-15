@@ -1,143 +1,104 @@
 """
 Module : maths_utils.py
 Description : Fonctions mathematiques et d'algebre lineaire en Python pur.
-Aucune bibliotheque externe autorisee, seul le module math (exp, log) est utilise.
-Tous les calculs matriciels et vectoriels sont implementes avec des listes simples
-et des boucles explicites pour une comprehension pedagogique maximale.
+Modules autorises : math (exp, log) et random (seed, uniform, random).
+Toutes les operations matricielles sont implementees via des boucles explicites.
 """
 
 from math import exp, log
+from random import uniform, seed
 
 
-# =====================================================================
-# 1. Generateur pseudo-aleatoire (LCG) en Python pur
-# =====================================================================
-# Permet d'initialiser les poids sans importer le module 'random'.
-_graine = 42
+def fixer_graine(graine):
+    """Fixe la graine aleatoire pour la reproductibilite."""
+    seed(graine)
 
-def fixer_graine(nouvelle_graine):
-    """
-    Fixe la graine pour rendre l'initialisation des poids reproductible.
-    """
-    global _graine
-    _graine = nouvelle_graine
 
 def aleatoire_uniforme(val_min, val_max):
-    """
-    Genere un nombre flottant pseudo-aleatoire dans l'intervalle [val_min, val_max].
-    Utilise un generateur congruentiel lineaire (LCG).
-    """
-    global _graine
-    # Constantes standards de generateur lineaire congruentiel (POSIX)
-    _graine = (1103515245 * _graine + 12345) % (2**31)
-    ratio = _graine / (2**31)
-    return val_min + (val_max - val_min) * ratio
+    """Tire un flottant uniforme dans [val_min, val_max] via random.uniform."""
+    return uniform(val_min, val_max)
 
-
-# =====================================================================
-# 2. Fonctions d'activation et elementaires
-# =====================================================================
 
 def exponentielle(x):
-    """
-    Calcule exp(x). Protege contre le debordement numerique (overflow).
-    """
+    """Calcule exp(x) avec protection contre le debordement."""
     if x > 50.0:
-        x = 50.0
-    elif x < -50.0:
-        x = -50.0
+        return exp(50.0)
+    if x < -50.0:
+        return exp(-50.0)
     return exp(x)
+
 
 def logarithme(x):
     """
-    Calcule log(x) pour la perte par entropie croisee.
-    Ajoute un petit epsilon pour eviter log(0).
+    Equation : log(x + 1e-12)
+    Calcule le logarithme naturel avec un terme regulateur pour eviter log(0).
     """
-    epsilon = 1e-15
-    if x < epsilon:
-        x = epsilon
+    if x < 1e-12:
+        return log(1e-12)
     return log(x)
+
 
 def tanh_scalaire(x):
     """
-    Concept du cours : Fonction d'activation tangente hyperbolique.
     Equation : tanh(x) = (exp(x) - exp(-x)) / (exp(x) + exp(-x))
-    Sortie dans l'intervalle [-1, 1].
+    Fonction d'activation de l'etat cache Ht bornee dans [-1, 1].
     """
-    # Protection contre le debordement de exp(x)
     if x > 20.0:
         return 1.0
-    elif x < -20.0:
+    if x < -20.0:
         return -1.0
-    
-    exp_pos = exp(x)
-    exp_neg = exp(-x)
-    return (exp_pos - exp_neg) / (exp_pos + exp_neg)
+    e_pos = exp(x)
+    e_neg = exp(-x)
+    return (e_pos - e_neg) / (e_pos + e_neg)
+
 
 def tanh_vecteur(v):
-    """
-    Applique tanh element par element sur un vecteur d'entree.
-    Utilise pour calculer l'etat cache Ht = tanh(Whh * H(t-1) + Wxh * Xt + bh).
-    """
+    """Applique tanh element par element sur un vecteur."""
     resultat = []
     for i in range(len(v)):
         resultat.append(tanh_scalaire(v[i]))
     return resultat
 
+
 def derivee_tanh(y_tanh):
     """
-    Concept du cours : Derivee de tanh(x) exprimee en fonction de sa sortie y = tanh(x).
     Equation : tanh'(x) = 1 - tanh(x)^2 = 1 - y^2
-    Utilisee lors de la retropropagation (BPTT).
+    Derivee de tanh exprimee directement a partir de sa sortie y.
     """
     return 1.0 - y_tanh * y_tanh
 
+
 def softmax(v):
     """
-    Concept du cours : Distribution de probabilites sur les caracteres de sortie.
-    Equation : Yt[k] = exp(z_k) / somme_j(exp(z_j))
-    Pour la stabilite numerique, on soustrait max(v) avant l'exponentielle.
+    Equation : Yt[k] = exp(v[k] - max(v)) / somme_j exp(v[j] - max(v))
+    Softmax numeriquement stable par soustraction du maximum.
     """
-    # 1. Recherche explicite du maximum pour eviter un overflow dans exp()
-    val_max = v[0]
+    max_v = v[0]
     for i in range(1, len(v)):
-        if v[i] > val_max:
-            val_max = v[i]
-
-    # 2. Calcul des exponentielles stables et de leur somme
+        if v[i] > max_v:
+            max_v = v[i]
     exps = []
     somme_exp = 0.0
     for i in range(len(v)):
-        val_exp = exp(v[i] - val_max)
-        exps.append(val_exp)
-        somme_exp += val_exp
-
-    # 3. Normalisation pour que la somme valle 1
+        e = exp(v[i] - max_v)
+        exps.append(e)
+        somme_exp += e
     probabilites = []
     for i in range(len(exps)):
         probabilites.append(exps[i] / somme_exp)
-
     return probabilites
 
 
-# =====================================================================
-# 3. Operations d'algebre lineaire (Vecteurs et Matrices)
-# =====================================================================
-
 def creer_vecteur_zeros(taille):
-    """
-    Cree un vecteur de zeros de taille donnee (ex: H0 = vecteur nul).
-    """
+    """Cree un vecteur nul de dimension donnee (ex: H0 = vecteur nul)."""
     vecteur = []
     for _ in range(taille):
         vecteur.append(0.0)
     return vecteur
 
+
 def creer_matrice_zeros(nb_lignes, nb_colonnes):
-    """
-    Cree une matrice (liste de listes) remplie de zeros.
-    Utilise pour accumuler les gradients (dWxh, dWhh, dWhy).
-    """
+    """Cree une matrice nulle (liste de listes) de dimensions donnees."""
     matrice = []
     for _ in range(nb_lignes):
         ligne = []
@@ -146,105 +107,124 @@ def creer_matrice_zeros(nb_lignes, nb_colonnes):
         matrice.append(ligne)
     return matrice
 
-def creer_matrice_aleatoire(nb_lignes, nb_colonnes, echelle=0.01):
-    """
-    Initialise une matrice avec de petites valeurs uniformes dans [-echelle, echelle].
-    """
+
+def creer_matrice_aleatoire(nb_lignes, nb_colonnes, echelle=0.1):
+    """Initialise une matrice avec des valeurs uniformes dans [-echelle, echelle]."""
     matrice = []
     for _ in range(nb_lignes):
         ligne = []
         for _ in range(nb_colonnes):
-            valeur = aleatoire_uniforme(-echelle, echelle)
-            ligne.append(valeur)
+            ligne.append(uniform(-echelle, echelle))
         matrice.append(ligne)
     return matrice
 
+
 def somme_vecteurs(u, v):
-    """
-    Addition element par element de deux vecteurs de meme taille : res = u + v.
-    """
-    resultat = []
+    """Equation : u + v (somme terme a terme de deux vecteurs)."""
+    res = []
     for i in range(len(u)):
-        resultat.append(u[i] + v[i])
-    return resultat
+        res.append(u[i] + v[i])
+    return res
+
 
 def soustraction_vecteurs(u, v):
-    """
-    Soustraction element par element : res = u - v.
-    """
-    resultat = []
+    """Equation : u - v (difference terme a terme de deux vecteurs)."""
+    res = []
     for i in range(len(u)):
-        resultat.append(u[i] - v[i])
-    return resultat
+        res.append(u[i] - v[i])
+    return res
+
 
 def produit_matrice_vecteur(M, v):
     """
-    Concept du cours : Multiplication d'une matrice M (taille N x P)
-    par un vecteur v (taille P) donnant un vecteur de taille N.
     Equation : res[i] = somme_j ( M[i][j] * v[j] )
-    Utilise pour Whh * H(t-1), Wxh * Xt et Why * Ht.
+    Multiplication matrice-vecteur (utilisee pour Wxh*Xt, Whh*H(t-1), Why*Ht).
     """
-    nb_lignes = len(M)
-    nb_colonnes = len(v)
-    resultat = []
-    for i in range(nb_lignes):
+    res = []
+    for i in range(len(M)):
+        ligne = M[i]
         somme = 0.0
-        for j in range(nb_colonnes):
-            somme += M[i][j] * v[j]
-        resultat.append(somme)
-    return resultat
+        for j in range(len(v)):
+            somme += ligne[j] * v[j]
+        res.append(somme)
+    return res
+
+
+def produit_matrice_one_hot(M, indice):
+    """
+    Equation : M * e_k = colonne k de M (propriete fondamentale du One-Hot).
+    """
+    res = []
+    for i in range(len(M)):
+        res.append(M[i][indice])
+    return res
+
 
 def produit_exterieur(u, v):
     """
-    Concept du cours : Produit exterieur entre deux vecteurs u (taille N) et v (taille P).
-    Equation : M[i][j] = u[i] * v[j], produisant une matrice de taille N x P.
-    Fondamental en retropropagation pour calculer les gradients des poids :
-    dWhy = dYt * Ht^T, dWhh = dHt * H(t-1)^T, dWxh = dHt * Xt^T.
+    Equation : M[i][j] = u[i] * v[j]
+    Produit exterieur produisant une nouvelle matrice.
     """
-    nb_lignes = len(u)
-    nb_colonnes = len(v)
     matrice = []
-    for i in range(nb_lignes):
+    for i in range(len(u)):
         ligne = []
-        for j in range(nb_colonnes):
-            ligne.append(u[i] * v[j])
+        ui = u[i]
+        for j in range(len(v)):
+            ligne.append(ui * v[j])
         matrice.append(ligne)
     return matrice
 
+
+def accumuler_produit_exterieur(cible, u, v):
+    """
+    Equation : cible[i][j] += u[i] * v[j]
+    Accumule directement le produit exterieur sans allocation memoire intermediaire.
+    """
+    for i in range(len(u)):
+        ui = u[i]
+        ligne = cible[i]
+        for j in range(len(v)):
+            ligne[j] += ui * v[j]
+
+
+def accumuler_produit_exterieur_one_hot(cible, u, indice):
+    """
+    Equation : cible[i][indice] += u[i] (produit exterieur avec vecteur One-Hot e_k).
+    """
+    for i in range(len(u)):
+        cible[i][indice] += u[i]
+
+
 def transposee(M):
-    """
-    Calcule la transposee M^T d'une matrice M.
-    Utilisee en retropropagation pour propager l'erreur vers l'arriere :
-    dHt = Why^T * dYt + Whh^T * dH(t+1)
-    """
-    nb_lignes = len(M)
-    nb_colonnes = len(M[0])
-    matrice_t = []
-    for j in range(nb_colonnes):
+    """Equation : M_T[j][i] = M[i][j] (matrice transposee)."""
+    nb_l = len(M)
+    nb_c = len(M[0])
+    M_T = []
+    for j in range(nb_c):
         ligne = []
-        for i in range(nb_lignes):
+        for i in range(nb_l):
             ligne.append(M[i][j])
-        matrice_t.append(ligne)
-    return matrice_t
+        M_T.append(ligne)
+    return M_T
+
 
 def norme_vecteur(v):
-    """
-    Calcule la norme euclidienne (L2) d'un vecteur : racine_carree(somme(v_i^2)).
-    """
-    somme_carres = 0.0
-    for i in range(len(v)):
-        somme_carres += v[i] * v[i]
-    return somme_carres ** 0.5
+    """Equation : ||v|| = sqrt(somme_i v[i]^2) (norme euclidienne L2)."""
+    somme = 0.0
+    for x in v:
+        somme += x * x
+    return somme ** 0.5
+
 
 def norme_globale_matrices(liste_matrices):
     """
-    Concept du cours : Norme Frobenius globale de l'ensemble des matrices de gradients.
-    Utilisee pour l'ecretage du gradient (gradient clipping) :
-    norme = racine(somme de tous les carres des elements de dWxh, dWhh, dWhy, etc.).
+    Equation : ||M||_F = sqrt(somme_m somme_ij M[i][j]^2)
+    Norme de Frobenius globale utilisee pour l'ecretage du gradient.
     """
-    somme_totale = 0.0
+    somme = 0.0
     for M in liste_matrices:
         for i in range(len(M)):
-            for j in range(len(M[i])):
-                somme_totale += M[i][j] * M[i][j]
-    return somme_totale ** 0.5
+            ligne = M[i]
+            for j in range(len(ligne)):
+                somme += ligne[j] * ligne[j]
+    return somme ** 0.5

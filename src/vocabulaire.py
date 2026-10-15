@@ -1,21 +1,18 @@
 """
 Module : vocabulaire.py
-Description : Gestion du vocabulaire au niveau caractere et encodage One-Hot.
-Chaque caractere est associe a un indice entier unique entre 0 et V-1 (ou V est la taille du vocabulaire).
-Le token special '<fin>' est traite comme un caractere atomique unique.
+Description : Gestion du vocabulaire et encodage One-Hot au niveau caractere.
+Chaque caractere est indexe de 0 a V-1, avec '<fin>' traite comme token atomique.
 """
 
 
 def tokeniser(texte):
     """
-    Decoupe une chaine de caracteres en liste de tokens.
-    Traite '<fin>' comme un seul token atomique, et chaque autre caractere individuellement.
+    Decoupe une chaine en liste de caracteres en preservant '<fin>' comme un seul jeton.
     """
     tokens = []
     i = 0
     n = len(texte)
     while i < n:
-        # Verification si le token special '<fin>' commence a l'indice i
         if i + 5 <= n and texte[i:i+5] == "<fin>":
             tokens.append("<fin>")
             i += 5
@@ -27,47 +24,39 @@ def tokeniser(texte):
 
 def construire_vocab(tous_les_tokens):
     """
-    Concept du cours : Construction du dictionnaire/vocabulaire du corpus.
-    Identifie tous les caracteres distincts et leur assigne un indice unique de 0 a V-1.
-    Retourne :
-      - car_vers_idx : dictionnaire caractere -> indice entier
-      - idx_vers_car : dictionnaire indice entier -> caractere
+    Concept du cours : Table de correspondance bijective entre caracteres et indices entiers.
+    Retourne (car_vers_idx, idx_vers_car).
     """
-    # 1. Extraction des tokens uniques sans utiliser set() (boucle explicite)
     tokens_uniques = []
     for tok in tous_les_tokens:
-        deja_present = False
+        deja_vu = False
         for u in tokens_uniques:
             if u == tok:
-                deja_present = True
+                deja_vu = True
                 break
-        if not deja_present:
+        if not deja_vu:
             tokens_uniques.append(tok)
 
-    # 2. Tri explicite (tri a bulles) pour avoir un ordre fixe et reproductible
     for i in range(len(tokens_uniques)):
         for j in range(i + 1, len(tokens_uniques)):
             if tokens_uniques[i] > tokens_uniques[j]:
-                temp = tokens_uniques[i]
+                tmp = tokens_uniques[i]
                 tokens_uniques[i] = tokens_uniques[j]
-                tokens_uniques[j] = temp
+                tokens_uniques[j] = tmp
 
-    # 3. Creation des tables de correspondance
     car_vers_idx = {}
     idx_vers_car = {}
     for idx in range(len(tokens_uniques)):
         car = tokens_uniques[idx]
         car_vers_idx[car] = idx
         idx_vers_car[idx] = car
-
     return car_vers_idx, idx_vers_car
 
 
 def one_hot(indice, taille_vocab):
     """
-    Concept du cours : Representation One-Hot d'un caractere Xt.
-    Xt est un vecteur de taille V ou toutes les composantes sont nulles (0.0),
-    sauf celle correspondant a l'indice du caractere qui vaut 1.0.
+    Equation : Xt[k] = 1 si k == indice sinon 0
+    Vecteur binaire de dimension V representant un caractere.
     """
     vecteur = []
     for i in range(taille_vocab):
@@ -79,9 +68,7 @@ def one_hot(indice, taille_vocab):
 
 
 def encoder_sequence(tokens, car_vers_idx):
-    """
-    Transforme une liste de tokens en une liste d'indices entiers.
-    """
+    """Convertit une liste de tokens en une liste d'indices entiers."""
     indices = []
     for tok in tokens:
         indices.append(car_vers_idx[tok])
@@ -89,9 +76,7 @@ def encoder_sequence(tokens, car_vers_idx):
 
 
 def decoder_sequence(indices, idx_vers_car):
-    """
-    Reconstitue le texte lisible a partir d'une liste d'indices entiers.
-    """
+    """Reconstitue le texte lisible a partir d'une liste d'indices."""
     texte = ""
     for idx in indices:
         texte += idx_vers_car[idx]
@@ -99,10 +84,8 @@ def decoder_sequence(indices, idx_vers_car):
 
 
 def encoder_one_hot_sequence(indices, taille_vocab):
-    """
-    Convertit une sequence d'indices en une sequence de vecteurs One-Hot [X0, X1, ..., XT-1].
-    """
-    vecteurs_one_hot = []
+    """Convertit une suite d'indices en une suite temporelle de vecteurs One-Hot."""
+    vecteurs = []
     for idx in indices:
-        vecteurs_one_hot.append(one_hot(idx, taille_vocab))
-    return vecteurs_one_hot
+        vecteurs.append(one_hot(idx, taille_vocab))
+    return vecteurs
